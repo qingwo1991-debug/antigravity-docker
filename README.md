@@ -1,4 +1,4 @@
-# antigravity-docker
+<img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/93ac9b53-c368-4efa-af32-f188af360f9d" /># antigravity-docker
 antigravity-docker
 数据来源https://github.com/lbjlaq/Antigravity-Manager
 只做docker打包，需要的朋友可以试试
@@ -30,3 +30,8 @@ environment:
 lbjlaq/Antigravity-Manager - 原项目（https://github.com/lbjlaq/Antigravity-Manager）
 
 linuxserver/webtop - 基础镜像（https://github.com/linuxserver/docker-webtop）
+
+记得右键打开terminal
+然后执行
+
+<img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/7ad1b619-c3b6-4913-8734-28c4c3cf5f4b" />
