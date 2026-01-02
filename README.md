@@ -1,7 +1,9 @@
 # antigravity-docker
 antigravity-docker
-https://github.com/lbjlaq/Antigravity-Manager
-非官方的docker
+数据来源https://github.com/lbjlaq/Antigravity-Manager
+只做docker打包，需要的朋友可以试试
+
+如果这个项目帮到了你，请给个 Star ⭐
 
 
 📖 访问方式
