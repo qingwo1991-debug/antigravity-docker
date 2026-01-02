@@ -1,0 +1,26 @@
+services:
+  antigravity:
+    image: qingwo1991/antigravity:latest
+    container_name: antigravity
+    restart: unless-stopped
+    
+    ports:
+      - "3011:3001"   # HTTPS，这个可以自己改，127.0.0.1:3011:3001
+      - "5800:5800"   # Web 远程桌面
+
+    volumes:
+      - ./config:/config
+
+    environment:
+      # PUID改成其他的有问题,比如1000，懂的大佬可以试试
+      - PUID=0
+      - PGID=0
+      - TZ=Asia/Shanghai
+      - DISPLAY_WIDTH=1280
+      - DISPLAY_HEIGHT=768
+      # 登录认证（一定要修改）
+      - CUSTOM_USER=admin
+      - PASSWORD=changeme
+      # 网络代理（如需要）
+      # - HTTP_PROXY=http://192.168.1.1:7890
+      # - HTTPS_PROXY=http://192.168.1.1:7890
