@@ -8,7 +8,7 @@ https://github.com/lbjlaq/Antigravity-Manager
 | 方式 | 地址 | 说明 |
 |------|------|------|
 | Web 桌面 | `http://你的IP:5800` | 浏览器远程桌面 |
-| HTTPS | `https://你的IP:3011` | 加密连接 |
+| HTTPS | `https://你的IP:3011` | 加密连接，没有加证书不建议暴露公网，最好加个ng做下反代|
 
 
 🔧 高级配置
