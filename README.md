@@ -9,6 +9,8 @@ https://github.com/lbjlaq/Antigravity-Manager
 |------|------|------|
 | Web 桌面 | `http://你的IP:5800` | 浏览器远程桌面 |
 | HTTPS | `https://你的IP:3011` | 加密连接 |
+
+
 🔧 高级配置
 📡 配置代理（网络环境需要）
 environment:
@@ -22,4 +24,5 @@ environment:
 
 🙏 鸣谢
 lbjlaq/Antigravity-Manager - 原项目（https://github.com/lbjlaq/Antigravity-Manager）
+
 linuxserver/webtop - 基础镜像（https://github.com/linuxserver/docker-webtop）
