@@ -1,4 +1,4 @@
-<img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/93ac9b53-c368-4efa-af32-f188af360f9d" /># antigravity-docker
+#antigravity-docker
 antigravity-docker
 数据来源https://github.com/lbjlaq/Antigravity-Manager
 只做docker打包，需要的朋友可以试试
