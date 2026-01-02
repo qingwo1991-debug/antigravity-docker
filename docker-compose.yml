@@ -5,14 +5,14 @@ services:
     restart: unless-stopped
     
     ports:
-      - "3011:3001"   # HTTPS，这个可以自己改，127.0.0.1:3011:3001
+      - "3011:3001"   # HTTPS，这个可以自己改，127.0.0.1:3011:3001，这个最好加个反代，用真正的https
       - "5800:5800"   # Web 远程桌面
 
     volumes:
       - ./config:/config
 
     environment:
-      # PUID改成其他的有问题,比如1000，懂的大佬可以试试
+      # PUID改成其他的有问题,比如1000
       - PUID=0
       - PGID=0
       - TZ=Asia/Shanghai
