@@ -1,0 +1,95 @@
+name: 🐳 Build & Push Docker Image
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/build.yml'
+  
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: '强制重新构建'
+        required: false
+        default: 'false'
+  
+  schedule:
+    # 每天北京时间凌晨 3 点检查更新
+    - cron: '0 19 * * *'
+
+env:
+  DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/antigravity
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      version: ${{ steps.check.outputs.version }}
+    
+    steps:
+      - name: 📥 获取上游最新版本
+        id: check
+        run: |
+          VERSION=$(curl -fsSL "https://api.github.com/repos/lbjlaq/Antigravity-Manager/releases/latest" | jq -r '.tag_name')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📌 上游版本: $VERSION"
+          
+          # 检查 Docker Hub 是否已有此版本
+          DOCKER_TAGS=$(curl -fsSL "https://hub.docker.com/v2/repositories/${{ env.DOCKERHUB_REPO }}/tags?page_size=100" 2>/dev/null | jq -r '.results[].name' 2>/dev/null || echo "")
+          
+          if echo "$DOCKER_TAGS" | grep -q "^${VERSION}$"; then
+            echo "✅ 版本 $VERSION 已存在，跳过构建"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "🆕 发现新版本 $VERSION，开始构建"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: check-upstream
+    if: needs.check-upstream.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 🏗️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🏷️ 生成标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_REPO }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.check-upstream.outputs.version }}
+            type=raw,value={{date 'YYYYMMDD'}}
+
+      - name: 🚀 Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 📢 构建完成通知
+        run: |
+          echo "🎉 构建完成！"
+          echo "📦 版本: ${{ needs.check-upstream.outputs.version }}"
+          echo "🐳 镜像: ${{ env.DOCKERHUB_REPO }}"
