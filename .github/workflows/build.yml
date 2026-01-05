@@ -26,30 +26,36 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
-      version: ${{ steps.check.outputs.version }}
+      manager_version: ${{ steps.check.outputs.manager_version }}
+      combined_version: ${{ steps.check.outputs.combined_version }}
     
     steps:
       - name: 📥 获取上游最新版本
         id: check
         run: |
-          VERSION=$(curl -fsSL "https://api.github.com/repos/lbjlaq/Antigravity-Manager/releases/latest" | jq -r '.tag_name')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "📌 上游版本: $VERSION"
+          # 获取 Antigravity-Manager 版本
+          MANAGER_VERSION=$(curl -fsSL "https://api.github.com/repos/lbjlaq/Antigravity-Manager/releases/latest" | jq -r '.tag_name')
+          echo "manager_version=$MANAGER_VERSION" >> $GITHUB_OUTPUT
+          echo "📌 Manager 版本: $MANAGER_VERSION"
+          
+          # 生成组合版本标签（日期+Manager版本）
+          COMBINED_VERSION="${MANAGER_VERSION}-$(date +%Y%m%d)"
+          echo "combined_version=$COMBINED_VERSION" >> $GITHUB_OUTPUT
           
           # 检查 Docker Hub 是否已有此版本
           DOCKER_TAGS=$(curl -fsSL "https://hub.docker.com/v2/repositories/${{ env.DOCKERHUB_REPO }}/tags?page_size=100" 2>/dev/null | jq -r '.results[].name' 2>/dev/null || echo "")
           
-          if echo "$DOCKER_TAGS" | grep -q "^${VERSION}$"; then
-            echo "✅ 版本 $VERSION 已存在，跳过构建"
+          if echo "$DOCKER_TAGS" | grep -q "^${MANAGER_VERSION}$"; then
+            echo "✅ 版本 $MANAGER_VERSION 已存在，跳过构建"
             echo "should_build=false" >> $GITHUB_OUTPUT
           else
-            echo "🆕 发现新版本 $VERSION，开始构建"
+            echo "🆕 发现新版本 $MANAGER_VERSION，开始构建"
             echo "should_build=true" >> $GITHUB_OUTPUT
           fi
 
   build:
     needs: check-upstream
-    if: needs.check-upstream.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    if: needs.check-upstream.outputs.should_build == 'true' || github.event.inputs.force_build == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     
     steps:
@@ -75,7 +81,7 @@ jobs:
           images: ${{ env.DOCKERHUB_REPO }}
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ needs.check-upstream.outputs.version }}
+            type=raw,value=${{ needs.check-upstream.outputs.manager_version }}
             type=raw,value={{date 'YYYYMMDD'}}
 
       - name: 🚀 Build and Push
@@ -90,5 +96,5 @@ jobs:
       - name: 📢 构建完成通知
         run: |
           echo "🎉 构建完成！"
-          echo "📦 版本: ${{ needs.check-upstream.outputs.version }}"
+          echo "📦 Manager 版本: ${{ needs.check-upstream.outputs.manager_version }}"
           echo "🐳 镜像: ${{ env.DOCKERHUB_REPO }}"
