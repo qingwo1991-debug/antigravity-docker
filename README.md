@@ -19,6 +19,7 @@ antigravity-docker
 environment:
   - HTTP_PROXY=http://代理IP:端口
   - HTTPS_PROXY=http://代理IP:端口
+
 🖥️ 自定义分辨率
 
 environment:
