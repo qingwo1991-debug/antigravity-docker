@@ -15,10 +15,11 @@ on:
         default: 'false'
   
   schedule:
-    # 北京时间 03:00 (UTC 19:00)
+    # 每天北京时间凌晨 3 点 (UTC 19:00) 检查更新
     - cron: '0 19 * * *'
 
 env:
+  # 请确保你在 GitHub Secrets 中配置了 DOCKERHUB_USERNAME 和 DOCKERHUB_TOKEN
   DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/antigravity
   GITHUB_REPO: lbjlaq/Antigravity-Manager
 
@@ -28,96 +29,124 @@ jobs:
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
       manager_version: ${{ steps.check.outputs.manager_version }}
-      deb_url: ${{ steps.resolve_url.outputs.deb_url }}
+      deb_url_amd64: ${{ steps.resolve_url.outputs.deb_url_amd64 }}
+      deb_url_arm64: ${{ steps.resolve_url.outputs.deb_url_arm64 }}
       combined_version: ${{ steps.check.outputs.combined_version }}
     
     steps:
-      - name: 📥 获取最新版本号
+      - name: 📥 获取上游最新版本
         id: check
         run: |
-          # 获取 Tag 名称 (例如 v1.2.3 或 1.2.3)
+          # 1. 获取最新 Tag (例如 v1.2.3 或 1.2.3)
           TAG_NAME=$(curl -fsSL "https://api.github.com/repos/${{ env.GITHUB_REPO }}/releases/latest" | jq -r '.tag_name')
           
-          # 去除可能存在的 'v' 前缀用于版本号比较
-          CLEAN_VERSION="${TAG_NAME#v}"
-          
-          echo "manager_version=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "📌 最新版本: $TAG_NAME"
-          
-          COMBINED_VERSION="${TAG_NAME}-$(date +%Y%m%d)"
-          echo "combined_version=$COMBINED_VERSION" >> $GITHUB_OUTPUT
-
-          # 检查 Docker Hub 是否已存在
-          DOCKER_TAGS=$(curl -fsSL "https://hub.docker.com/v2/repositories/${{ env.DOCKERHUB_REPO }}/tags?page_size=100" 2>/dev/null | jq -r '.results[].name' 2>/dev/null || echo "")
-          
-          if echo "$DOCKER_TAGS" | grep -q "^${TAG_NAME}$"; then
-            echo "✅ 镜像版本 $TAG_NAME 已存在"
-            echo "should_build=false" >> $GITHUB_OUTPUT
-          else
-            echo "🆕 需要构建新版本"
-            echo "should_build=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 🔗 解析下载链接 (含备用方案)
-        id: resolve_url
-        if: steps.check.outputs.should_build == 'true' || github.event.inputs.force_build == 'true' || github.event_name == 'push'
-        run: |
-          VERSION=${{ steps.check.outputs.manager_version }}
-          # 去掉 v 前缀用于文件名拼接 (如果文件名里不带v)
-          NO_V_VERSION="${VERSION#v}"
-          
-          echo "🔎 正在寻找下载链接..."
-
-          # --- 方案 A: 构造标准下载链接 (速度最快) ---
-          # 假设文件名格式为: Antigravity-Manager_1.1.0_amd64.deb
-          TRY_URL="https://github.com/${{ env.GITHUB_REPO }}/releases/download/${VERSION}/Antigravity-Manager_${NO_V_VERSION}_amd64.deb"
-          
-          echo "1️⃣ 尝试方案 A (直接构造): $TRY_URL"
-          if curl --output /dev/null --silent --head --fail "$TRY_URL"; then
-            echo "✅ 方案 A 成功！链接有效。"
-            echo "deb_url=$TRY_URL" >> $GITHUB_OUTPUT
-            exit 0
-          else
-            echo "⚠️ 方案 A 失败 (404 Not Found)。"
-          fi
-
-          # --- 方案 B: 使用 API 模糊搜索 (备用方案) ---
-          echo "2️⃣ 启用方案 B (API 智能搜索)..."
-          API_URL="https://api.github.com/repos/${{ env.GITHUB_REPO }}/releases/latest"
-          
-          # 使用 jq 查找包含 'amd64.deb' 的文件
-          FALLBACK_URL=$(curl -fsSL "$API_URL" | jq -r '.assets[] | select(.name | contains("amd64.deb")) | .browser_download_url' | head -n 1)
-          
-          if [ ! -z "$FALLBACK_URL" ] && [ "$FALLBACK_URL" != "null" ]; then
-            echo "✅ 方案 B 成功！找到链接: $FALLBACK_URL"
-            echo "deb_url=$FALLBACK_URL" >> $GITHUB_OUTPUT
-          else
-            echo "❌ 所有方案均失败！无法找到 .deb 安装包。"
+          if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "null" ]; then
+            echo "❌ 获取版本号失败，请检查 GitHub API 限制"
             exit 1
           fi
 
+          echo "manager_version=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "📌 上游最新版本: $TAG_NAME"
+          
+          # 生成组合版本号 (例如: v1.2.3-20240210)
+          COMBINED_VERSION="${TAG_NAME}-$(date +%Y%m%d)"
+          echo "combined_version=$COMBINED_VERSION" >> $GITHUB_OUTPUT
+
+          # 2. 检查 Docker Hub 是否已存在此版本
+          DOCKER_TAGS=$(curl -fsSL "https://hub.docker.com/v2/repositories/${{ env.DOCKERHUB_REPO }}/tags?page_size=100" 2>/dev/null | jq -r '.results[].name' 2>/dev/null || echo "")
+          
+          # 强制构建逻辑 OR 版本比对
+          if [[ "${{ github.event.inputs.force_build }}" == "true" ]]; then
+             echo "⚠️ 强制构建模式已开启"
+             echo "should_build=true" >> $GITHUB_OUTPUT
+          elif echo "$DOCKER_TAGS" | grep -q "^${TAG_NAME}$"; then
+            echo "✅ 镜像版本 $TAG_NAME 已存在，跳过构建"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "🆕 发现新版本/未构建版本，准备构建"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔗 智能解析下载链接 (AMD64 & ARM64)
+        id: resolve_url
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          VERSION="${{ steps.check.outputs.manager_version }}"
+          REPO="${{ env.GITHUB_REPO }}"
+          API_URL="https://api.github.com/repos/$REPO/releases/latest"
+          
+          echo "🔍 [AMD64] 开始寻找下载链接..."
+          
+          # --- 步骤 1: 获取 AMD64 (优先构造，失败则搜 API) ---
+          
+          # 尝试构造 URL (假设去掉了 'v' 前缀)
+          NO_V_VERSION="${VERSION#v}"
+          GUESS_AMD64="https://github.com/$REPO/releases/download/$VERSION/Antigravity-Manager_${NO_V_VERSION}_amd64.deb"
+          
+          if curl --output /dev/null --silent --head --fail "$GUESS_AMD64"; then
+            echo "✅ [AMD64] 猜中标准命名链接: $GUESS_AMD64"
+            FINAL_AMD64="$GUESS_AMD64"
+          else
+            echo "⚠️ [AMD64] 标准命名无效，切换到 API 搜索模式..."
+            # 获取 Release JSON
+            API_JSON=$(curl -fsSL "$API_URL")
+            # 搜索包含 amd64.deb 的文件
+            FINAL_AMD64=$(echo "$API_JSON" | jq -r '.assets[] | select(.name | contains("amd64.deb")) | .browser_download_url' | head -n 1)
+          fi
+          
+          if [ -z "$FINAL_AMD64" ] || [ "$FINAL_AMD64" = "null" ]; then
+            echo "❌ [AMD64] 致命错误: 无法找到 AMD64 安装包！"
+            exit 1
+          fi
+          echo "deb_url_amd64=$FINAL_AMD64" >> $GITHUB_OUTPUT
+
+          # --- 步骤 2: 推导 ARM64 (基于 AMD64 链接修改) ---
+          
+          echo "🔍 [ARM64] 开始寻找下载链接..."
+          
+          # 智能推导: 将链接中的 amd64 替换为 arm64
+          GUESS_ARM64="${FINAL_AMD64//amd64/arm64}"
+          
+          if curl --output /dev/null --silent --head --fail "$GUESS_ARM64"; then
+            echo "✅ [ARM64] 智能推导成功: $GUESS_ARM64"
+            FINAL_ARM64="$GUESS_ARM64"
+          else
+            echo "⚠️ [ARM64] 推导失败，尝试在 API 中搜索 arm64/aarch64..."
+            if [ -z "$API_JSON" ]; then API_JSON=$(curl -fsSL "$API_URL"); fi
+            FINAL_ARM64=$(echo "$API_JSON" | jq -r '.assets[] | select(.name | test("arm64.deb|aarch64.deb")) | .browser_download_url' | head -n 1)
+          fi
+
+          if [ -z "$FINAL_ARM64" ] || [ "$FINAL_ARM64" = "null" ]; then
+             echo "⚠️ [ARM64] 未找到 ARM 版本，ARM 构建可能会失败 (或你可以选择跳过)"
+             FINAL_ARM64=""
+          else
+             echo "🎯 [ARM64] 最终链接: $FINAL_ARM64"
+          fi
+          
+          echo "deb_url_arm64=$FINAL_ARM64" >> $GITHUB_OUTPUT
+
   build:
     needs: check-upstream
-    if: needs.check-upstream.outputs.should_build == 'true' || github.event.inputs.force_build == 'true' || github.event_name == 'push'
+    if: needs.check-upstream.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     
     steps:
-      - name: 📥 Checkout
+      - name: 📥 Checkout 代码
         uses: actions/checkout@v4
 
-      - name: 🏗️ Set up QEMU
+      - name: 🏗️ 设置 QEMU (多架构支持)
         uses: docker/setup-qemu-action@v3
 
-      - name: 🏗️ Set up Docker Buildx
+      - name: 🏗️ 设置 Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 🔐 Login to Docker Hub
+      - name: 🔐 登录 Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: 🏷️ 生成标签
+      - name: 🏷️ 生成 Docker 标签
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -127,20 +156,22 @@ jobs:
             type=raw,value=${{ needs.check-upstream.outputs.manager_version }}
             type=raw,value=${{ needs.check-upstream.outputs.combined_version }}
 
-      - name: 🚀 Build and Push
+      - name: 🚀 构建并推送 (多架构)
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64
+          # 同时构建 AMD64 和 ARM64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          # 核心改动：将解析好的 URL 传给 Docker
+          # 传入通过 API/推导 获得的精准下载链接
           build-args: |
-            DEB_URL=${{ needs.check-upstream.outputs.deb_url }}
+            DEB_URL_AMD64=${{ needs.check-upstream.outputs.deb_url_amd64 }}
+            DEB_URL_ARM64=${{ needs.check-upstream.outputs.deb_url_arm64 }}
           no-cache: true
 
-      - name: 📢 通知
+      - name: 📢 构建完成通知
         run: |
-          echo "🎉 构建成功！"
+          echo "🎉 构建成功并已推送！"
           echo "📦 版本: ${{ needs.check-upstream.outputs.manager_version }}"
-          echo "🔗 使用的源: ${{ needs.check-upstream.outputs.deb_url }}"
+          echo "🐳 镜像: ${{ env.DOCKERHUB_REPO }}"
