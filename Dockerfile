@@ -1,10 +1,11 @@
 # ------------------------------------------------------------------------------
-# Dockerfile - Antigravity Manager (Final Stable Version)
+# Dockerfile - Antigravity Manager (Final Fixed Version)
 # ------------------------------------------------------------------------------
-FROM lscr.io/linuxserver/webtop:ubuntu-xfce
+# 使用 IceWM 版本，体积比 XFCE 小很多，启动更快，且包含完整界面
+FROM lscr.io/linuxserver/webtop:ubuntu-icewm
 
 LABEL maintainer="你的GitHub用户名 <你的邮箱>"
-LABEL description="Antigravity Manager - 一键部署版"
+LABEL description="Antigravity Manager - 极速精简版"
 
 ENV TITLE="Antigravity Tools"
 ENV DEBIAN_FRONTEND=noninteractive
@@ -16,8 +17,9 @@ ARG TARGETARCH
 
 WORKDIR /app
 
-# 1. 安装基础工具 + 你的完整依赖列表
-# 注意：移除了 gdebi-core (用 apt 替代它，更稳)，但保留了所有图形库
+# 1. 安装基础工具
+# 🔴 关键修复：移除了所有手动指定的 libxxx 库 (如 libasound2)
+# 让后续的 install.deb 步骤自动去仓库里拉取正确版本的依赖 (libasound2t64)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
@@ -26,17 +28,7 @@ RUN apt-get update && \
         ca-certificates \
         gnupg \
         fonts-wqy-zenhei \
-        fonts-wqy-microhei \
-        mousepad \
-        # === 保留你指定的依赖库 ===
-        libnss3 \
-        libatk1.0-0 \
-        libatk-bridge2.0-0 \
-        libcups2 \
-        libdrm2 \
-        libgtk-3-0 \
-        libgbm1 \
-        libasound2 && \
+        fonts-wqy-microhei && \
     \
     # 2. ====== 安装 Antigravity 主程序 (官方源) ======
     echo "📦 [Base] Installing Antigravity from official repo..." && \
@@ -65,10 +57,10 @@ RUN apt-get update && \
     echo "⬇️ Downloading from: $DOWNLOAD_URL" && \
     wget -q --show-progress -O /tmp/install.deb "$DOWNLOAD_URL" && \
     \
-    # 4. ====== 安装 Manager (关键修改) ======
-    # 使用 apt-get install ./file.deb 替代 gdebi
-    # 它可以自动解决依赖，且不会触发 QEMU 的 Exit 100 错误
-    echo "📦 [Manager] Installing via apt..." && \
+    # 4. ====== 安装 Manager (自动解决依赖) ======
+    # 🔴 关键点：使用 apt-get install ./xxx.deb
+    # 它会自动发现系统需要 libasound2t64 而不是 libasound2，并自动安装，不会报错
+    echo "📦 [Manager] Installing via apt (auto-resolve dependencies)..." && \
     apt-get install -y /tmp/install.deb && \
     \
     # 5. ====== 清理 ======
