@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# Dockerfile - Antigravity Manager (Multi-Arch Supported)
+# Dockerfile - Antigravity Manager (Final Stable Version)
 # ------------------------------------------------------------------------------
 FROM lscr.io/linuxserver/webtop:ubuntu-xfce
 
@@ -9,15 +9,15 @@ LABEL description="Antigravity Manager - 一键部署版"
 ENV TITLE="Antigravity Tools"
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 接收从 GitHub Actions 传入的下载链接
+# 接收构建参数
 ARG DEB_URL_AMD64
 ARG DEB_URL_ARM64
-# Docker Buildx 会自动填充当前构建的架构 (amd64 或 arm64)
 ARG TARGETARCH
 
 WORKDIR /app
 
-# 1. 安装基础工具、图形界面库依赖、以及 gdebi (关键)
+# 1. 安装基础工具 + 你的完整依赖列表
+# 注意：移除了 gdebi-core (用 apt 替代它，更稳)，但保留了所有图形库
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
@@ -28,7 +28,7 @@ RUN apt-get update && \
         fonts-wqy-zenhei \
         fonts-wqy-microhei \
         mousepad \
-        gdebi-core \
+        # === 保留你指定的依赖库 ===
         libnss3 \
         libatk1.0-0 \
         libatk-bridge2.0-0 \
@@ -48,8 +48,8 @@ RUN apt-get update && \
     apt-get update && \
     apt-get install -y antigravity && \
     \
-    # 3. ====== 安装 Antigravity-Manager (根据架构选择链接) ======
-    echo "🏗️ [Manager] Building for architecture: $TARGETARCH" && \
+    # 3. ====== 下载 Manager ======
+    echo "🏗️ [Manager] Processing for architecture: $TARGETARCH" && \
     if [ "$TARGETARCH" = "amd64" ]; then \
         DOWNLOAD_URL="$DEB_URL_AMD64"; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
@@ -58,28 +58,28 @@ RUN apt-get update && \
         echo "❌ Error: Unsupported architecture: $TARGETARCH"; exit 1; \
     fi && \
     \
-    # 检查链接是否为空 (防止上游没有 ARM 版本导致构建假死)
     if [ -z "$DOWNLOAD_URL" ]; then \
-        echo "❌ Error: No download URL provided for $TARGETARCH. (Upstream might lack this arch)"; \
-        exit 1; \
+        echo "❌ Error: No download URL provided for $TARGETARCH."; exit 1; \
     fi && \
     \
-    echo "⬇️ [Manager] Downloading from: $DOWNLOAD_URL" && \
+    echo "⬇️ Downloading from: $DOWNLOAD_URL" && \
     wget -q --show-progress -O /tmp/install.deb "$DOWNLOAD_URL" && \
     \
-    # 使用 gdebi 安装，自动解决依赖地狱
-    echo "📦 [Manager] Installing via gdebi..." && \
-    gdebi -n /tmp/install.deb && \
+    # 4. ====== 安装 Manager (关键修改) ======
+    # 使用 apt-get install ./file.deb 替代 gdebi
+    # 它可以自动解决依赖，且不会触发 QEMU 的 Exit 100 错误
+    echo "📦 [Manager] Installing via apt..." && \
+    apt-get install -y /tmp/install.deb && \
     \
-    # 4. ====== 清理工作 (保留 curl 用于健康检查) ======
-    apt-get purge -y wget gnupg gdebi-core && \
+    # 5. ====== 清理 ======
+    apt-get purge -y wget gnupg && \
     apt-get autoremove -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# 创建符号链接确保路径正确
+# 符号链接
 RUN ln -sf /usr/bin/antigravity /usr/local/bin/antigravity 2>/dev/null || true
 
-# 健康检查 (Webtop 默认端口 3000)
+# 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:3000/ || exit 1
